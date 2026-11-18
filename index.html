@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="Registre receitas e despesas, acompanhe seus orçamentos mensais e cuide de um mascote virtual.">
+  <title>Boas-vindas · PetFinance</title>
+  <link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./room.css">
+  <script src="./finance.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Pular para o conteúdo</a>
+  <div class="shell" data-layout="welcome">
+    <header class="masthead">
+      <div class="masthead-inner">
+        <a class="brand" href="#painel" aria-label="PetFinance, início">
+          <img src="./assets/logo.svg" width="34" height="34" alt="">
+          <span>Pet<span>Finance</span></span>
+        </a>
+        <button class="button button-outline workspace-switch" data-action="workspace" id="workspace-switch" type="button" hidden></button>
+      </div>
+    </header>
+    <main class="main" id="main" tabindex="-1">
+      <div class="workspace">
+        <header class="page-header" hidden>
+          <h1 id="page-title">Finanças</h1>
+          <div class="page-controls">
+            <button class="button button-outline period-trigger" data-action="period" type="button" id="period-trigger"></button>
+            <div id="page-action"></div>
+          </div>
+        </header>
+        <div id="page"></div>
+      </div>
+    </main>
+    <nav class="nav" id="site-nav" aria-label="Navegação principal" hidden>
+      <a data-page="painel" href="#painel"><span data-icon="paw"></span><span>Cantinho</span></a>
+      <a data-page="financas" href="#financas"><span data-icon="wallet"></span><span>Finanças</span></a>
+      <a data-page="lancamentos" href="#lancamentos" aria-label="Lançamentos"><span data-icon="transactions"></span><span class="nav-full">Lançamentos</span><span class="nav-short" aria-hidden="true">Registros</span></a>
+      <a data-page="orcamentos" href="#orcamentos" aria-label="Orçamentos"><span data-icon="pie"></span><span class="nav-full">Orçamentos</span><span class="nav-short" aria-hidden="true">Limites</span></a>
+      <a data-page="renda" href="#renda"><span data-icon="income"></span><span>Renda</span></a>
+      <a data-page="pet" href="#pet"><span data-icon="edit"></span><span>Meu pet</span></a>
+    </nav>
+  </div>
+  <dialog class="dialog" id="dialog" aria-labelledby="dialog-title">
+    <div class="dialog-header">
+      <h2 id="dialog-title"></h2>
+      <button class="icon-button" type="button" data-action="close" aria-label="Fechar"><span data-icon="x"></span></button>
+    </div>
+    <div id="dialog-body"></div>
+  </dialog>
+  <div id="notification" class="notification" role="status" aria-live="polite"></div>
+</body>
+</html>

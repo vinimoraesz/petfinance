@@ -1,0 +1,90 @@
+[data-layout="room"] .workspace { padding-top: 0; }
+
+.room-scene {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
+  max-width: 660px;
+  height: clamp(266px, calc(100svh - 64px - var(--dock-space) - env(safe-area-inset-top)), 670px);
+  margin-inline: auto;
+  padding-top: clamp(12px, 3vh, 25px);
+}
+
+.room-hud { text-align: center; }
+.room-identity h1 {
+  color: var(--deep);
+  font-size: clamp(29px, 4vw, 41px);
+  line-height: 1.04;
+  overflow-wrap: anywhere;
+}
+.room-identity p { margin-top: 4px; color: var(--muted); font-size: 13px; }
+.room-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 20px;
+  background: #f4f4f4;
+  color: #555555;
+  font-size: 11px;
+}
+.room-status strong { font-weight: 760; }
+.room-feedback {
+  max-width: 400px;
+  margin: 7px auto 0;
+  color: #5c5c5c;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.room-avatar {
+  width: min(100%, 535px);
+  height: 100%;
+  display: grid;
+  container-type: size;
+  place-items: center;
+}
+.room-pet {
+  display: grid;
+  place-items: center;
+  position: relative;
+  isolation: isolate;
+  width: min(78cqw, 94cqh, 425px);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 40%;
+  background: transparent;
+  color: #6f6f6f;
+  touch-action: manipulation;
+}
+.room-pet .pet-sprite { width: 100%; }
+.room-pet[data-mood="triste"] .pet-sprite { transform: translateY(11%); }
+.room-shadow {
+  position: absolute;
+  left: 14%;
+  bottom: 1%;
+  width: 73%;
+  height: 4%;
+  border-radius: 50%;
+  background: #3b3b3b;
+  opacity: .13;
+  filter: blur(7px);
+}
+.room-pet[data-mood="triste"] .room-shadow { left: 7%; width: 86%; }
+.room-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.room-actions .button { padding-inline: 11px; }
+
+@media (max-height: 520px) {
+  .room-scene { padding-top: 8px; }
+  .room-identity h1 { font-size: 28px; }
+  .room-identity p { font-size: 11px; }
+  .room-status { margin-top: 5px; padding-block: 3px; }
+  .room-feedback { margin-top: 4px; font-size: 11.5px; }
+}
