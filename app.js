@@ -451,25 +451,22 @@
     return '<div class="content-stack"><section class="panel tinted budget-overview"><h2>Total planejado</h2><strong>' + finance.money(planned) +
       "</strong>" + (exceeded ? '<p class="budget-warning">' + note + "</p>" : "") + context +
       (investmentGoal ? expenseRows([["Limites de gastos", totalLimit], ["Meta para guardar", investmentGoal]], true) : "") +
-      "</section>" + budgetPlanCard(plan.income, average) +
+      "</section>" + budgetPlanCard(plan.income) +
       '<section class="panel list-panel" aria-label="Categorias de orçamento">' + budgetList(summary.budgetRows) +
       '</section>' + investmentGoalCard() + "</div>";
   }
 
-  function budgetPlanCard(planIncome, average) {
-    const control = average && planIncome !== average
-      ? action(planIncome ? "Atualizar base" : "Aplicar divisão", "budget-plan", "", "button-outline")
-      : "";
+  function budgetPlanCard(planIncome) {
     const groups = finance.budgetGroups.map(({ label, shares }) => {
       const share = Object.values(shares).reduce((sum, value) => sum + value, 0);
       return '<div><dt>' + label + '</dt><dd>' + share + "%</dd></div>";
     }).join("");
     const help = planIncome
-      ? "Divisão inicial calculada sobre " + finance.money(planIncome) + ". Toque em uma categoria para ajustar o limite deste mês."
-      : "Use a renda média como base para preencher os limites que ainda não foram ajustados.";
+      ? "Limites preenchidos com base em " + finance.money(planIncome) + " de renda mensal. Toque em uma categoria para ajustar o limite."
+      : "Informe a renda mensal em Renda para preencher os limites automaticamente.";
     return '<section class="panel">' + panelHeader("Divisão sugerida da renda", help) +
       '<details class="balance-details"><summary>Ver divisão' + icon("chevron") + '</summary><dl class="expense-report">' + groups +
-      "</dl></details>" + (control ? '<div class="section-actions">' + control + "</div>" : "") + "</section>";
+      "</dl></details></section>";
   }
 
   function investmentGoalCard(totals = finance.portfolioSummary(workspace(), month)) {
@@ -821,9 +818,7 @@
       if (!ownerName || !petName || !breed) return formError(current, "Informe seu nome, escolha um pet e dê um nome a ele.");
       if (averageIncome === null) return formError(current, "Informe uma renda válida, como 3.500,00.");
       Object.assign(state.personal, { ownerName, averageIncome, pet: { breed: breed.id, name: petName, customName: true } });
-      if (!Object.keys(state.personal.budgetPlans || {}).length) {
-        finance.applyBudgetPlan(state.personal, localToday().slice(0, 7));
-      }
+      finance.applyBudgetPlan(state.personal, localToday().slice(0, 7));
       state.mode = "personal";
       save();
       window.scrollTo({ top: 0 });
@@ -834,9 +829,7 @@
       const amount = raw ? finance.parseCents(raw) : 0;
       if (amount === null) return formError(current, "Informe um valor válido, como 3.500,00.");
       workspace().averageIncome = amount;
-      if (!Object.keys(workspace().budgetPlans || {}).length) {
-        finance.applyBudgetPlan(workspace(), localToday().slice(0, 7));
-      }
+      finance.applyBudgetPlan(workspace(), localToday().slice(0, 7));
       save(amount ? "Renda média salva." : "Renda média removida.");
     },
     period(current, values) {
@@ -989,10 +982,6 @@
       $("budget-content").innerHTML = budgetContent(finance.summarize(workspace(), month));
     },
     budget: editBudget,
-    "budget-plan": () => {
-      finance.applyBudgetPlan(workspace(), month);
-      save("Divisão sugerida aplicada aos limites sem ajuste manual.");
-    },
     "investment-goal": (_, trigger) => {
       const { goal } = finance.budgetPlan(workspace(), month);
       showDialog("Meta para guardar", form("investment-goal", '<p class="workcopy">' + finance.monthLabel(month) + "</p>" +

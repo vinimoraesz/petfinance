@@ -207,15 +207,18 @@
   }
 
   function applyBudgetPlan(workspace, month) {
-    if (!workspace.averageIncome) return;
     const plans = workspace.budgetPlans ||= {};
-    plans[month] = workspace.averageIncome;
+    plans[month] = workspace.averageIncome || 0;
   }
 
-  function budgetPlan(workspace, month) {
-    const plans = workspace.budgetPlans || {};
-    const start = Object.keys(plans).filter(date => date <= month).sort().at(-1);
-    const income = plans[start] || 0;
+  function budgetPlan(workspace, month, currentMonth = localDate().slice(0, 7)) {
+    let income = workspace.averageIncome || 0;
+    if (month < currentMonth) {
+      const plans = workspace.budgetPlans || {};
+      const dates = Object.keys(plans).sort();
+      const reference = dates.filter(date => date <= month).at(-1) ?? dates[0];
+      income = plans[reference] ?? income;
+    }
     const limits = { ...workspace.budgets[month] };
     let goal = 0;
     if (income) {
