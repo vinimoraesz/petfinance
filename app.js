@@ -8,6 +8,7 @@
     financas: "Finanças",
     lancamentos: "Lançamentos",
     orcamentos: "Orçamentos",
+    investimentos: "Investimentos",
     renda: "Renda",
     pet: "Meu pet",
   };
@@ -30,6 +31,9 @@
     game: '<path d="M6.7 7h10.6a4 4 0 0 1 4 3.5l.6 4.9a2.3 2.3 0 0 1-3.8 2l-2.5-2.2H8.4l-2.5 2.2a2.3 2.3 0 0 1-3.8-2l.6-4.9a4 4 0 0 1 4-3.5Z"/><path d="M7.5 9.5v4m-2-2h4m6.5 0h.01m2.5 0h.01"/>',
     home: '<path d="m3 11 9-8 9 8M5 9.5v11h14v-11M10 20.5v-6h4v6"/>',
     health: '<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/>',
+    shield: '<path d="M12 22c5-2 8-5 8-11V5l-8-3-8 3v6c0 6 3 9 8 11Z"/><path d="m9 12 2 2 4-4"/>',
+    book: '<path d="M4 19V5a2 2 0 0 1 2-2h14v18H6a2 2 0 1 1 0-4h14M8 7h8"/>',
+    savings: '<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M7 8V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3m-8 5h6m-3 0v4"/>',
     more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     x: '<path d="m6 6 12 12M18 6 6 18"/>',
     edit: '<path d="m14 5 5 5M4 20l4-.8L20 7.3a2.1 2.1 0 0 0-3-3L5 16Zm9 0h8"/>',
@@ -82,6 +86,7 @@
   };
   let month = finance.localDate().slice(0, 7);
   let budgetView = "categories";
+  let historyMonths = 1;
   let galleryKind;
   let breedQuery = "";
   let breedPage = 0;
@@ -276,8 +281,13 @@
       const received = entry.type === "income";
       const category = received ? incomeCategory : categories.find(item => item.id === entry.category) || categories.at(-1);
       const sign = received ? "+" : "−";
+      const payment = finance.paymentOf(entry);
+      const frequency = finance.frequencyOf(entry);
+      const expenseDetails = received ? "" :
+        (payment === "unspecified" ? "" : " · " + finance.payments[payment]) +
+        (frequency === "once" ? "" : " · " + finance.frequencies[frequency]);
       return '<li class="transaction-item"><button class="transaction-row" type="button" data-action="transaction" data-id="' + entry.id + '">' + categoryIcon(category) + '<span class="transaction-detail"><strong>' + esc(entry.name) + "</strong><small>" + esc(category.name) + " · " + finance.dateLabel(entry.date) +
-        '</small></span><span class="transaction-value money-value" data-money="' + moneyTone(received ? entry.cents : -entry.cents) + '">' + sign + " " + finance.money(entry.cents) + "</span></button></li>";
+        expenseDetails + '</small></span><span class="transaction-value money-value" data-money="' + moneyTone(received ? entry.cents : -entry.cents) + '">' + sign + " " + finance.money(entry.cents) + "</span></button></li>";
     }).join("") + "</ul>";
   }
 
@@ -287,22 +297,62 @@
       ? '<div class="budget-alert">' + link("orcamentos", exceeded === 1 ? "1 categoria acima do limite" : exceeded + " categorias acima do limite") + "</div>"
       : "";
     return '<div class="content-stack">' + balanceCard(summary) + alert + '<section class="panel">' +
+      panelHeader("Investimentos e reserva", "Acompanhe o dinheiro guardado e o rendimento.", link("investimentos", "Ver investimentos")) + '</section><section class="panel">' +
       panelHeader("Lançamentos recentes", "", link("lancamentos", "Ver todos")) +
-      transactionList(summary.entries.slice(0, 3), "Nenhum lançamento neste mês.", true) + "</section></div>";
+      transactionList(summary.entries.slice(0, 3), "Nenhum lançamento neste mês.", true) + "</section>" + expenseReports() + "</div>";
+  }
+
+  function expenseRows(rows, neutral = false) {
+    return '<dl class="expense-report">' + rows.map(([label, cents, tone]) =>
+      '<div><dt>' + esc(label) + '</dt><dd class="money-value" data-money="' + (tone ?? (neutral ? "neutral" : moneyTone(-cents))) + '">' +
+      finance.money(cents) + "</dd></div>").join("") + "</dl>";
+  }
+
+  function historyContent(today) {
+    const { rows, byPayment, total, entries } = finance.expenseHistory(workspace(), today, historyMonths);
+    const paymentRows = Object.entries(finance.payments)
+      .filter(([id]) => id !== "unspecified" || byPayment[id] > 0)
+      .map(([id, label]) => [label, byPayment[id]]);
+    return expenseRows([["Total no período", total], ...paymentRows]) +
+      (rows.length > 1 ? expenseRows(rows.map(row => [finance.monthLabel(row.month), row.cents])) : "") +
+      (entries.length ? '<details class="balance-details"><summary>Ver despesas do período' + icon("chevron") +
+        '</summary>' + transactionList(entries, "") + "</details>" : "");
+  }
+
+  function expenseReports() {
+    const today = localToday();
+    const forecast = finance.expenseForecast(workspace(), today);
+    const forecastRows = forecast.map((row, index) => [
+      index === 0 ? "Restante deste mês" : finance.monthLabel(row.month), row.cents,
+    ]);
+    return '<section class="panel">' +
+      panelHeader("Histórico de gastos", "Inclui o mês atual até hoje.") +
+      segments([["1", "1 mês"], ["3", "3 meses"], ["6", "6 meses"]], String(historyMonths), "history-period", "Período do histórico") +
+      '<div id="expense-history" aria-live="polite">' + historyContent(today) + '</div></section><section class="panel">' +
+      panelHeader("Previsão de gastos", "Estimativa a partir de amanhã com base nas recorrências e nos gastos já agendados.") +
+      (forecast.some(row => row.cents > 0) ? expenseRows(forecastRows) :
+        '<div class="empty">Nenhum gasto futuro previsto. Registre uma despesa recorrente ou com data futura para começar.</div>') +
+      "</section>";
+  }
+
+  function labeledOptions(options, selected) {
+    return Object.entries(options).map(([id, label]) =>
+      '<option value="' + id + '"' + (id === selected ? " selected" : "") + ">" + esc(label) + "</option>").join("");
   }
 
   function categoryOptions(selected) {
     return finance.allCategories(workspace()).map(category => '<option value="' + category.id + '"' + (category.id === selected ? " selected" : "") + ">" + esc(category.name) + "</option>").join("");
   }
 
-  const filters = { query: "", type: "", category: "" };
-  const normalized = str => str.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const filters = { query: "", type: "", category: "", payment: "" };
+  const normalized = finance.normalizeName;
 
   function applyFilters(summary) {
     const query = normalized(filters.query.trim());
     const entries = summary.entries.filter(entry => (
       (!filters.type || filters.type === entry.type) &&
       (!filters.category || filters.category === entry.category) &&
+      (!filters.payment || (entry.type === "expense" && filters.payment === finance.paymentOf(entry))) &&
       (!query || normalized(entry.name).includes(query))
     ));
     $("filtered-entries").innerHTML = transactionList(entries, !summary.entries.length ? "Nenhum lançamento neste mês." : "Nenhum lançamento corresponde aos filtros.", !summary.entries.length);
@@ -314,6 +364,8 @@
       '<input type="search" data-filter="query" aria-label="Buscar lançamento" placeholder="Buscar lançamento" value="' + esc(filters.query) + '"></label>' + kind +
       '<label class="filter-category"><span>Categoria</span><select data-filter="category"><option value="">Todas</option><option value="receita"' +
       (filters.category === "receita" ? " selected" : "") + ">Receita</option>" + categoryOptions(filters.category) +
+      '</select></label><label class="filter-category"><span>Pagamento</span><select data-filter="payment">' +
+      labeledOptions({ "": "Todos", ...finance.payments }, filters.payment) +
       '</select></label></div><section class="panel list-panel" aria-label="Lançamentos do mês" id="filtered-entries"></section></div>';
   }
 
@@ -390,12 +442,75 @@
     const exceeded = configured.filter(row => row.status === "acima").length;
     const note = exceeded === 1 ? "1 categoria acima do limite." : exceeded + " categorias acima do limite.";
     const average = workspace().averageIncome || 0;
+    const plan = finance.budgetPlan(workspace(), month);
+    const investmentGoal = plan.goal;
+    const planned = totalLimit + investmentGoal;
     const context = average
-      ? '<p>' + percent.format(totalLimit / average) + " da renda média mensal.</p>"
+      ? '<p>' + percent.format(planned / average) + " da renda média mensal.</p>"
       : link("renda", "Informar renda média");
-    return '<div class="content-stack"><section class="panel tinted budget-overview"><h2>Total planejado</h2><strong>' + finance.money(totalLimit) +
+    return '<div class="content-stack"><section class="panel tinted budget-overview"><h2>Total planejado</h2><strong>' + finance.money(planned) +
       "</strong>" + (exceeded ? '<p class="budget-warning">' + note + "</p>" : "") + context +
-      '</section><section class="panel list-panel" aria-label="Categorias de orçamento">' + budgetList(summary.budgetRows) + "</section></div>";
+      (investmentGoal ? expenseRows([["Limites de gastos", totalLimit], ["Meta para guardar", investmentGoal]], true) : "") +
+      "</section>" + budgetPlanCard(plan.income, average) +
+      '<section class="panel list-panel" aria-label="Categorias de orçamento">' + budgetList(summary.budgetRows) +
+      '</section>' + investmentGoalCard() + "</div>";
+  }
+
+  function budgetPlanCard(planIncome, average) {
+    const control = average && planIncome !== average
+      ? action(planIncome ? "Atualizar base" : "Aplicar divisão", "budget-plan", "", "button-outline")
+      : "";
+    const groups = finance.budgetGroups.map(({ label, shares }) => {
+      const share = Object.values(shares).reduce((sum, value) => sum + value, 0);
+      return '<div><dt>' + label + '</dt><dd>' + share + "%</dd></div>";
+    }).join("");
+    const help = planIncome
+      ? "Divisão inicial calculada sobre " + finance.money(planIncome) + ". Toque em uma categoria para ajustar o limite deste mês."
+      : "Use a renda média como base para preencher os limites que ainda não foram ajustados.";
+    return '<section class="panel">' + panelHeader("Divisão sugerida da renda", help) +
+      '<details class="balance-details"><summary>Ver divisão' + icon("chevron") + '</summary><dl class="expense-report">' + groups +
+      "</dl></details>" + (control ? '<div class="section-actions">' + control + "</div>" : "") + "</section>";
+  }
+
+  function investmentGoalCard(totals = finance.portfolioSummary(workspace(), month)) {
+    const { goal } = finance.budgetPlan(workspace(), month);
+    const saved = totals.monthlyDeposits - totals.monthlyWithdrawals;
+    const progress = goal ? Math.min(100, Math.max(0, saved / goal * 100)) : 0;
+    const control = action("Editar meta", "investment-goal", "", "button-outline");
+    return '<section class="panel">' + panelHeader("Meta para guardar", finance.monthLabel(month), control) +
+      expenseRows([["Aportes menos resgates", saved], ["Meta mensal", goal]], true) +
+      (goal ? '<span class="budget-track" aria-hidden="true"><span class="budget-fill savings-progress" style="--percent:' +
+        progress + '%"></span></span>' : "") +
+      (currentPage() === "orcamentos" ? '<div class="section-actions">' + link("investimentos", "Ver investimentos") + "</div>" : "") +
+      "</section>";
+  }
+
+  function investmentView() {
+    const totals = finance.portfolioSummary(workspace(), month);
+    const { investments, balance, deposits, withdrawals, gain } = totals;
+    const cards = investments.map(investment => {
+      const result = finance.investmentSummary(investment);
+      const movements = [...investment.movements].reverse().sort((a, b) => b.date.localeCompare(a.date)).map(movement => [
+        (movement.type === "deposit" ? "Aporte" : "Resgate") + " · " + movement.date.split("-").reverse().join("/"),
+        movement.type === "deposit" ? movement.cents : -movement.cents,
+      ]);
+      return '<section class="panel"><div class="panel-header"><h2>' + esc(investment.name) + "</h2>" +
+        action("Editar", "investment", "edit", "button-outline", 'data-id="' + investment.id + '"') + "</div>" +
+        expenseRows([["Valor atual", result.balance], ["Rendimento acumulado", result.gain, moneyTone(result.gain)]], true) +
+        (movements.length ? '<details class="balance-details"><summary>Ver aportes e resgates' + icon("chevron") + "</summary>" +
+          expenseRows(movements, true) + "</details>" : "") +
+        '<div class="section-actions">' + action("Registrar aporte ou resgate", "investment-movement", "plus", "button-outline", 'data-id="' + investment.id + '"') +
+        "</div></section>";
+    }).join("");
+    const resultTone = moneyTone(gain);
+    const returnRate = deposits ? " · " + percent.format(gain / deposits) + " sobre os aportes" : "";
+    return '<div class="content-stack"><section class="panel tinted budget-overview"><h2>Total guardado</h2><strong>' + finance.money(balance) +
+      '</strong><p class="investment-result money-value" data-money="' + resultTone + '">Rendimento acumulado ' +
+      finance.money(gain) + returnRate + "</p>" +
+      expenseRows([["Total aportado", deposits], ["Total resgatado", withdrawals]], true) +
+      '<p class="form-help">Atualize o valor de cada investimento com o saldo informado pela sua instituição. O rendimento considera o saldo atual, os aportes e os resgates.</p></section>' +
+      investmentGoalCard(totals) + (cards ||
+        '<section class="panel">' + panelHeader("Seus investimentos", "Adicione uma aplicação ou reserva para começar a acompanhar.") + "</section>") + "</div>";
   }
 
   function incomeSettings(summary) {
@@ -514,7 +629,7 @@
       field("Seu nome", '<input name="ownerName" autocomplete="name" required maxlength="40" placeholder="Como você quer ser chamado?">') +
       '<div class="setup-income">' + field("Renda mensal média (R$)", '<input name="income" inputmode="decimal" maxlength="18" value="' + income +
         '" placeholder="0,00" aria-describedby="setup-income-help">') +
-      '<p class="form-help" id="setup-income-help">Você pode preencher depois na aba Renda.</p></div>' +
+      '<p class="form-help" id="setup-income-help">Usamos sua renda para sugerir limites e uma meta para guardar. Você pode ajustar tudo depois.</p></div>' +
       '<div class="setup-pet">' + field("Animal de estimação", picker) +
       '<div id="setup-preview" class="setup-preview" aria-hidden="true"' + (chosen ? "" : " hidden") + ">" +
       (chosen ? sprite(chosen, "calmo", true, true) : "") + "</div></div>" +
@@ -558,10 +673,12 @@
       pageAction = action("Novo", "transaction", "plus", "button-primary", 'aria-label="Novo lançamento"');
     } else if (page === "orcamentos") {
       pageAction = action("Categoria", "category", "plus", "button-outline", 'aria-label="Nova categoria"');
+    } else if (page === "investimentos") {
+      pageAction = action("Novo", "investment", "plus", "button-primary", 'aria-label="Novo investimento"');
     }
     $("page-action").innerHTML = pageAction;
     document.querySelectorAll(".nav a").forEach(anchor => {
-      if (anchor.dataset.page === page) anchor.setAttribute("aria-current", "page");
+      if (anchor.dataset.page === page || (page === "investimentos" && anchor.dataset.page === "financas")) anchor.setAttribute("aria-current", "page");
       else anchor.removeAttribute("aria-current");
     });
     switch (page) {
@@ -574,6 +691,9 @@
         break;
       case "orcamentos":
         pageRoot.innerHTML = budgets(summary);
+        break;
+      case "investimentos":
+        pageRoot.innerHTML = investmentView();
         break;
       case "renda":
         pageRoot.innerHTML = incomeSettings(summary);
@@ -610,10 +730,17 @@
     const date = entry?.date || (currentPage() === "painel" || month === today.slice(0, 7) ? today : month + "-01");
     const category = '<label class="field" id="transaction-category"' + (mode === "income" ? " hidden" : "") + '>Categoria<select name="category"' + (mode === "income" ? " disabled" : "") + ">" + categoryOptions(entry?.category) + "</select></label>";
     const type = field("Tipo", '<select name="type"><option value="expense">Despesa</option><option value="income"' + (mode === "income" ? " selected" : "") + ">Receita</option></select>");
+    const expenseFields = '<div id="transaction-expense-fields"' + (mode === "income" ? " hidden" : "") + '><div class="form-row">' +
+      field("Frequência", '<select name="frequency"' + (mode === "income" ? " disabled" : "") + ">" +
+        labeledOptions(finance.frequencies, finance.frequencyOf(entry || {})) + "</select>") +
+      field("Pagamento", '<select name="payment"' + (mode === "income" ? " disabled" : "") + ">" +
+        labeledOptions(finance.payments, finance.paymentOf(entry || {})) + "</select>") +
+      '</div><p class="form-help expense-form-help">A frequência entra na previsão de gastos.</p></div>';
     const body = (state.mode === "demo" ? '<p class="form-help">Este lançamento ficará nos dados de exemplo.</p>' : "") +
       field("Descrição", '<input name="name" required maxlength="80" placeholder="Ex.: compras do mercado" value="' + esc(entry?.name || "") + '" autofocus>') +
       '<div class="form-row">' + type + field("Valor (R$)", '<input name="value" inputmode="decimal" maxlength="18" placeholder="0,00" required value="' + (entry ? finance.moneyInput(entry.cents) : "") + '">') + '</div><div class="form-row">' + category +
-      field("Data", '<input name="date" type="date" min="1900-01-01" max="9999-12-31" required value="' + date + '">') + '</div><input type="hidden" name="id" value="' + (entry?.id || "") + '">';
+      field("Data", '<input name="date" type="date" min="1900-01-01" max="9999-12-31" required value="' + date + '">') + "</div>" +
+      expenseFields + '<input type="hidden" name="id" value="' + (entry?.id || "") + '">';
     const del = entry ? '<button type="button" class="text-link delete" data-action="confirm-delete" data-id="' + entry.id + '">Excluir</button>' : "";
     showDialog(entry ? "Editar lançamento" : "Novo lançamento", form("transaction", body, "Salvar", del), trigger);
   }
@@ -621,11 +748,46 @@
   function editBudget(id, trigger) {
     const category = finance.allCategories(workspace()).find(item => item.id === id);
     if (!category) return;
-    const limit = workspace().budgets[month]?.[id];
+    const limit = finance.budgetPlan(workspace(), month).limits[id];
     const body = '<p class="workcopy">' + finance.monthLabel(month) + "</p>" +
       field("Limite (R$)", '<input name="value" inputmode="decimal" maxlength="18" placeholder="0,00" autofocus value="' + (limit ? finance.moneyInput(limit) : "") + '">') +
       '<p class="form-help">Deixe em branco ou use zero para remover o limite deste mês.</p><input type="hidden" name="id" value="' + id + '">';
     showDialog("Limite de " + category.name, form("budget", body, "Salvar limite"), trigger);
+  }
+
+  function investmentAmount(label, name, cents, attributes = "") {
+    const value = cents === undefined ? "" : finance.moneyInput(cents);
+    return field(label, '<input name="' + name + '" inputmode="decimal" maxlength="18" placeholder="0,00" value="' + value + '" ' + attributes + '>');
+  }
+
+  function investmentDate(label) {
+    const today = localToday();
+    return field(label, '<input name="date" type="date" min="1900-01-01" max="' + today + '" value="' + today + '" required>');
+  }
+
+  function editInvestment(id, trigger) {
+    const investment = (workspace().investments || []).find(item => item.id === id);
+    if (id && !investment) return;
+    const name = field("Nome", '<input name="name" required maxlength="50" placeholder="Ex.: Reserva de emergência" value="' +
+      esc(investment?.name || "") + '" autofocus>');
+    const balance = investmentAmount("Valor atual (R$)", "balance", investment?.balance, investment ? "required" : "");
+    const controls = investment
+      ? balance + '<p class="form-help">Informe o saldo atual da aplicação para atualizar o rendimento.</p>'
+      : investmentAmount("Valor já aplicado (R$)", "initial") + investmentDate("Data do aporte inicial") + balance +
+        '<p class="form-help">Se o campo Valor atual ficar em branco, usamos o valor aplicado.</p>';
+    const deleteButton = investment ? action("Excluir", "confirm-investment-delete", "", "button-outline button-danger", 'data-id="' + investment.id + '"') : "";
+    showDialog(investment ? "Editar investimento" : "Novo investimento", form("investment", name + controls +
+      '<input type="hidden" name="id" value="' + (investment?.id || "") + '">', "Salvar", deleteButton), trigger);
+  }
+
+  function editInvestmentMovement(id, trigger) {
+    const investment = (workspace().investments || []).find(item => item.id === id);
+    if (!investment) return;
+    const controls = '<p class="workcopy">' + esc(investment.name) + "</p>" +
+      field("Tipo", '<select name="type" autofocus><option value="deposit">Aporte</option><option value="withdrawal">Resgate</option></select>') +
+      investmentAmount("Valor (R$)", "value", undefined, "required") + investmentDate("Data") +
+      '<p class="form-help">O valor registrado ajusta o saldo da aplicação.</p><input type="hidden" name="id" value="' + id + '">';
+    showDialog("Aporte ou resgate", form("investment-movement", controls, "Registrar"), trigger);
   }
 
   function editWorkspace(trigger) {
@@ -659,6 +821,9 @@
       if (!ownerName || !petName || !breed) return formError(current, "Informe seu nome, escolha um pet e dê um nome a ele.");
       if (averageIncome === null) return formError(current, "Informe uma renda válida, como 3.500,00.");
       Object.assign(state.personal, { ownerName, averageIncome, pet: { breed: breed.id, name: petName, customName: true } });
+      if (!Object.keys(state.personal.budgetPlans || {}).length) {
+        finance.applyBudgetPlan(state.personal, localToday().slice(0, 7));
+      }
       state.mode = "personal";
       save();
       window.scrollTo({ top: 0 });
@@ -669,6 +834,9 @@
       const amount = raw ? finance.parseCents(raw) : 0;
       if (amount === null) return formError(current, "Informe um valor válido, como 3.500,00.");
       workspace().averageIncome = amount;
+      if (!Object.keys(workspace().budgetPlans || {}).length) {
+        finance.applyBudgetPlan(workspace(), localToday().slice(0, 7));
+      }
       save(amount ? "Renda média salva." : "Renda média removida.");
     },
     period(current, values) {
@@ -692,6 +860,13 @@
       const entry = entries.find(item => item.id === id);
       if (id && !entry) return formError(current, "Este lançamento já foi excluído.");
       const change = { name, type, category, cents, date };
+      if (type === "expense") {
+        change.frequency = finance.frequencyOf({ frequency: values.get("frequency") });
+        change.payment = finance.paymentOf({ payment: values.get("payment") });
+      } else if (entry) {
+        delete entry.frequency;
+        delete entry.payment;
+      }
       if (entry) Object.assign(entry, change);
       else entries.push({ ...change, id: uid(), created: Date.now() });
       if (month !== date.slice(0, 7)) month = date.slice(0, 7);
@@ -703,9 +878,59 @@
       if (limit === null) return formError(current, "Informe um valor válido, como 350,00.");
       const id = values.get("id");
       const limits = workspace().budgets[month] ||= {};
-      if (limit) limits[id] = limit;
-      else delete limits[id];
+      limits[id] = limit;
       finish(limit ? "Limite atualizado." : "Limite removido.");
+    },
+    "investment-goal"(current, values) {
+      const raw = values.get("value").trim();
+      const goal = raw ? finance.parseCents(raw) : 0;
+      if (goal === null) return formError(current, "Informe uma meta válida.");
+      const goals = workspace().investmentGoals ||= {};
+      goals[month] = goal;
+      finish(goal ? "Meta atualizada." : "Meta removida.");
+    },
+    investment(current, values) {
+      const id = values.get("id");
+      const name = values.get("name").trim();
+      const investments = workspace().investments ||= [];
+      const investment = investments.find(item => item.id === id);
+      if (id && !investment) return formError(current, "Este investimento já foi excluído.");
+      const initialRaw = values.get("initial")?.trim();
+      const initial = initialRaw ? finance.parseCents(initialRaw) : 0;
+      const balanceRaw = values.get("balance").trim();
+      const balance = (balanceRaw || investment) ? finance.parseCents(balanceRaw) : initial;
+      if (!name || initial === null || balance === null) {
+        return formError(current, "Informe um nome e valores válidos.");
+      }
+      if (investment) {
+        Object.assign(investment, { name, balance });
+      } else {
+        const date = values.get("date");
+        if (!date || date > localToday()) return formError(current, "Informe uma data válida até hoje.");
+        const movements = initial ? [{ type: "deposit", cents: initial, date }] : [];
+        investments.push({ id: uid(), name, balance, movements });
+      }
+      finish(investment ? "Investimento atualizado." : "Investimento adicionado.");
+    },
+    "investment-movement"(current, values) {
+      const investment = (workspace().investments || []).find(item => item.id === values.get("id"));
+      if (!investment) return formError(current, "Este investimento já foi excluído.");
+      const date = values.get("date");
+      const type = values.get("type");
+      const amount = finance.parseCents(values.get("value"));
+      if (!amount || !date || date > localToday() || !["deposit", "withdrawal"].includes(type)) {
+        return formError(current, "Informe um valor maior que zero e uma data válida até hoje.");
+      }
+      const balance = investment.balance + (type === "deposit" ? amount : -amount);
+      if (balance < 0) return formError(current, "O resgate é maior que o saldo atual.");
+      if (balance > finance.maxCents) return formError(current, "O saldo ultrapassaria o valor máximo permitido.");
+      investment.movements.push({ type, cents: amount, date });
+      investment.balance = balance;
+      finish(type === "deposit" ? "Aporte registrado." : "Resgate registrado.");
+    },
+    "investment-delete"(current, values) {
+      workspace().investments = (workspace().investments || []).filter(item => item.id !== values.get("id"));
+      finish("Investimento excluído do PetFinance.");
     },
     category(current, values) {
       const name = values.get("name").trim();
@@ -737,7 +962,8 @@
     workspace: (_, trigger) => editWorkspace(trigger),
     "switch-mode": mode => {
       state.mode = mode;
-      filters.query = filters.type = filters.category = "";
+      filters.query = filters.type = filters.category = filters.payment = "";
+      historyMonths = 1;
       budgetView = "categories";
       galleryKind = undefined;
       breedQuery = "";
@@ -747,6 +973,11 @@
     },
     period: (_, trigger) => showDialog("Selecionar mês", form("period", field("Mês", '<input name="month" type="month" min="1900-01" max="9999-12" required value="' + month + '" autofocus>'), "Aplicar"), trigger),
     transaction: editTransaction,
+    "history-period": (period, trigger) => {
+      historyMonths = Number(period);
+      selectSegment(trigger);
+      $("expense-history").innerHTML = historyContent(localToday());
+    },
     "filter-type": (type, trigger) => {
       filters.type = type;
       selectSegment(trigger);
@@ -758,6 +989,23 @@
       $("budget-content").innerHTML = budgetContent(finance.summarize(workspace(), month));
     },
     budget: editBudget,
+    "budget-plan": () => {
+      finance.applyBudgetPlan(workspace(), month);
+      save("Divisão sugerida aplicada aos limites sem ajuste manual.");
+    },
+    "investment-goal": (_, trigger) => {
+      const { goal } = finance.budgetPlan(workspace(), month);
+      showDialog("Meta para guardar", form("investment-goal", '<p class="workcopy">' + finance.monthLabel(month) + "</p>" +
+        investmentAmount("Meta mensal (R$)", "value", goal || undefined, "autofocus") +
+        '<p class="form-help">Deixe em branco ou use zero para remover a meta deste mês.</p>', "Salvar meta"), trigger);
+    },
+    investment: editInvestment,
+    "investment-movement": editInvestmentMovement,
+    "confirm-investment-delete": (id, trigger) => {
+      showDialog("Excluir investimento?", form("investment-delete", '<p class="workcopy">O histórico e os valores registrados desta aplicação serão removidos do PetFinance.</p>' +
+        '<input type="hidden" name="id" value="' + id + '">', "Excluir"), trigger);
+      dialog.querySelector('button[type="submit"]').classList.replace("button-primary", "button-danger");
+    },
     category: (_, trigger) => showDialog("Nova categoria", form("category", field("Nome da categoria", '<input name="name" required maxlength="30" placeholder="Ex.: Educação" autofocus>'), "Criar categoria"), trigger),
     rename: (_, trigger) => showDialog("Nome do seu pet", form("rename", field("Nome", '<input name="name" required maxlength="20" value="' + esc(workspace().pet.name) + '" autofocus>'), "Salvar nome"), trigger),
     petting: (_, trigger) => {
@@ -885,9 +1133,12 @@
   dialog.addEventListener("change", event => {
     if (event.target.name !== "type") return;
     const container = $("transaction-category");
+    const expenseFields = $("transaction-expense-fields");
     const isIncome = event.target.value === "income";
     container.hidden = isIncome;
     container.querySelector("select").disabled = isIncome;
+    expenseFields.hidden = isIncome;
+    expenseFields.querySelectorAll("select").forEach(select => { select.disabled = isIncome; });
   });
 
   document.addEventListener("submit", event => {

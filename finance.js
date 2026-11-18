@@ -8,8 +8,19 @@
     { id: "entretenimento", name: "Entretenimento", icon: "game" },
     { id: "moradia", name: "Moradia", icon: "home" },
     { id: "saude", name: "Saúde", icon: "health" },
+    { id: "seguros", name: "Seguros", icon: "shield" },
+    { id: "educacao", name: "Educação", icon: "book" },
     { id: "outros", name: "Outros", icon: "more" },
   ];
+
+  const budgetGroups = [
+    { label: "Essenciais", shares: { moradia: 25, alimentacao: 15, transporte: 10 } },
+    { label: "Saúde e proteção", shares: { saude: 10, seguros: 5 } },
+    { label: "Lazer e viagens", shares: { entretenimento: 6, viagem: 4 } },
+    { label: "Educação", shares: { educacao: 5 } },
+    { label: "Investimentos e reserva", shares: { savings: 20 } },
+  ];
+  const normalizeName = value => value.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
   const breeds = [
     { id: "srd-dog", name: "Vira-lata", kind: "Cão", petName: "Paçoca", keywords: "srd caramelo sem raça definida" },
@@ -49,6 +60,68 @@
   const money = cents => currency.format(cents / 100);
   const moneyInput = cents => decimals.format(cents / 100);
   const pad = value => String(value).padStart(2, "0");
+  const frequencies = { once: "Único", weekly: "Semanal", daily: "Diário", monthly: "Mensal" };
+  const payments = { credit: "Crédito", debit: "Débito", unspecified: "Não informado" };
+  const paymentOf = entry => Object.hasOwn(payments, entry.payment) ? entry.payment : "unspecified";
+  const frequencyOf = entry => Object.hasOwn(frequencies, entry.frequency) ? entry.frequency : "once";
+  const newestFirst = (a, b) => b.date.localeCompare(a.date) || b.created - a.created;
+  const dayMs = 86400000;
+  const dayNumber = date => Date.parse(date + "T00:00:00Z") / dayMs;
+
+  function shiftMonth(month, offset) {
+    const date = new Date(month + "-01T00:00:00Z");
+    date.setUTCMonth(date.getUTCMonth() + offset);
+    return date.toISOString().slice(0, 7);
+  }
+
+  function expenseHistory(workspace, today, months) {
+    const current = today.slice(0, 7);
+    const rows = Array.from({ length: months }, (_, index) => ({
+      month: shiftMonth(current, -index), cents: 0,
+    }));
+    const byMonth = new Map(rows.map(row => [row.month, row]));
+    const byPayment = { credit: 0, debit: 0, unspecified: 0 };
+    const entries = [];
+    let total = 0;
+    for (const entry of workspace.entries) {
+      const row = byMonth.get(entry.date.slice(0, 7));
+      if (!row || entry.date > today || entry.type !== "expense") continue;
+      entries.push(entry);
+      row.cents += entry.cents;
+      byPayment[paymentOf(entry)] += entry.cents;
+      total += entry.cents;
+    }
+    return { rows, byPayment, total, entries: entries.sort(newestFirst) };
+  }
+
+  function projectedCount(entry, start, end, monthStart) {
+    const origin = dayNumber(entry.date);
+    if (origin >= end) return 0;
+    const frequency = frequencyOf(entry);
+    if (frequency === "once") return Number(origin >= start);
+    if (frequency === "monthly") {
+      const day = Number(entry.date.slice(-2));
+      const occurrence = Math.min(monthStart + day - 1, end - 1);
+      return Number(occurrence >= start && occurrence >= origin);
+    }
+    const step = frequency === "weekly" ? 7 : 1;
+    const first = origin + Math.max(0, Math.ceil((start - origin) / step)) * step;
+    return Math.max(0, Math.ceil((end - first) / step));
+  }
+
+  function expenseForecast(workspace, today) {
+    const current = today.slice(0, 7);
+    const tomorrow = dayNumber(today) + 1;
+    const expenses = workspace.entries.filter(entry => entry.type === "expense");
+    return Array.from({ length: 4 }, (_, index) => {
+      const month = shiftMonth(current, index);
+      const monthStart = dayNumber(month + "-01");
+      const start = Math.max(tomorrow, monthStart);
+      const end = dayNumber(shiftMonth(month, 1) + "-01");
+      const cents = expenses.reduce((sum, entry) => sum + entry.cents * projectedCount(entry, start, end, monthStart), 0);
+      return { month, cents };
+    });
+  }
 
   function localDate() {
     const now = new Date();
@@ -85,6 +158,9 @@
       entries: [],
       budgets: {},
       averageIncome: 0,
+      budgetPlans: {},
+      investmentGoals: {},
+      investments: [],
       extraCategories: [],
       pet: { breed: "corgi", name: "Biscoito", customName: false },
       reviews: [],
@@ -121,13 +197,78 @@
   }
 
   function entriesFor(workspace, month) {
-    return workspace.entries.filter(entry => entry.date.startsWith(month + "-")).sort((a, b) => (
-      b.date.localeCompare(a.date) || b.created - a.created
-    ));
+    return workspace.entries.filter(entry => entry.date.startsWith(month + "-")).sort(newestFirst);
   }
 
   function allCategories(workspace) {
-    return [...categories, ...workspace.extraCategories];
+    const existing = workspace.extraCategories;
+    return [...categories.filter(category => !existing.some(item =>
+      normalizeName(item.name) === normalizeName(category.name))), ...existing];
+  }
+
+  function applyBudgetPlan(workspace, month) {
+    if (!workspace.averageIncome) return;
+    const plans = workspace.budgetPlans ||= {};
+    plans[month] = workspace.averageIncome;
+  }
+
+  function budgetPlan(workspace, month) {
+    const plans = workspace.budgetPlans || {};
+    const start = Object.keys(plans).filter(date => date <= month).sort().at(-1);
+    const income = plans[start] || 0;
+    const limits = { ...workspace.budgets[month] };
+    let goal = 0;
+    if (income) {
+      const available = allCategories(workspace);
+      let allocated = 0;
+      let cumulativeShare = 0;
+      for (const { shares } of budgetGroups) {
+        for (const [id, share] of Object.entries(shares)) {
+          cumulativeShare += share;
+          const subtotal = Math.round(income * cumulativeShare / 100);
+          const amount = subtotal - allocated;
+          allocated = subtotal;
+          if (id === "savings") {
+            goal = amount;
+          } else {
+            const base = categories.find(category => category.id === id);
+            const category = available.find(item => item.id === id ||
+              normalizeName(item.name) === normalizeName(base.name));
+            limits[category.id] ??= amount;
+          }
+        }
+      }
+    }
+    return { income, limits, goal: workspace.investmentGoals?.[month] ?? goal };
+  }
+
+  function investmentSummary(investment) {
+    let deposits = 0;
+    let withdrawals = 0;
+    for (const movement of investment.movements) {
+      if (movement.type === "deposit") deposits += movement.cents;
+      else withdrawals += movement.cents;
+    }
+    const balance = investment.balance;
+    return { balance, deposits, withdrawals, gain: balance + withdrawals - deposits };
+  }
+
+  function portfolioSummary(workspace, month) {
+    const investments = workspace.investments || [];
+    const totals = { balance: 0, deposits: 0, withdrawals: 0, gain: 0, monthlyDeposits: 0, monthlyWithdrawals: 0 };
+    for (const investment of investments) {
+      const summary = investmentSummary(investment);
+      totals.balance += summary.balance;
+      totals.deposits += summary.deposits;
+      totals.withdrawals += summary.withdrawals;
+      totals.gain += summary.gain;
+      for (const movement of investment.movements) {
+        if (!movement.date.startsWith(month + "-")) continue;
+        if (movement.type === "deposit") totals.monthlyDeposits += movement.cents;
+        else totals.monthlyWithdrawals += movement.cents;
+      }
+    }
+    return { investments, ...totals };
   }
 
   function summarize(workspace, month) {
@@ -143,7 +284,7 @@
         spending[entry.category] = (spending[entry.category] || 0) + entry.cents;
       }
     }
-    const limits = workspace.budgets[month] || {};
+    const { limits } = budgetPlan(workspace, month);
     const budgetRows = allCategories(workspace).map(category => {
       const limit = limits[category.id] || 0;
       const spent = spending[category.id] || 0;
@@ -179,7 +320,9 @@
   }
 
   globalThis.GranaFinance = {
-    breeds, money, moneyInput, localDate, dateLabel, monthLabel, parseCents,
+    breeds, money, moneyInput, localDate, dateLabel, monthLabel, parseCents, maxCents,
     newWorkspace, newDemo, allCategories, summarize, petMood,
+    frequencies, payments, frequencyOf, paymentOf, expenseHistory, expenseForecast,
+    budgetGroups, budgetPlan, applyBudgetPlan, investmentSummary, portfolioSummary, normalizeName,
   };
 })();

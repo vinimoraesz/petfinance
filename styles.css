@@ -97,6 +97,14 @@ h1 { font-size: clamp(29px, 6vw, 40px); font-weight: 780; line-height: 1.09; let
 .panel h2 { font-size: 17px; line-height: 1.25; font-weight: 780; letter-spacing: -.025em; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 7px; margin-bottom: 10px; }
 .panel-header p { color: var(--muted); font-size: 13px; margin-top: 5px; line-height: 1.45; }
+.expense-report { margin: 9px 0 0; }
+.expense-report + .expense-report { border-top: 1px solid var(--line); padding-top: 5px; }
+.expense-report div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 14px; }
+.expense-report dt { color: var(--muted); }
+.expense-report dd { margin: 0; flex-shrink: 0; font-weight: 730; }
+.expense-form-help { margin-top: 6px; }
+.section-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.budget-fill.savings-progress { background: #424242; }
 .tinted, .balance-card { background: var(--surface); }
 .balance-card { padding: 16px; color: var(--deep); }
 .card-label { font-size: 14px; color: #5f5f5f; font-weight: 700; }
@@ -150,9 +158,16 @@ h1 { font-size: clamp(29px, 6vw, 40px); font-weight: 780; line-height: 1.09; let
 .budget-note[data-status="acima"] { color: var(--money-out); }
 .budget-numbers b { font-weight: 760; }
 .budget-track { display: block; height: 5px; margin-top: 7px; border-radius: 8px; background: #eeeeee; overflow: hidden; }
-.budget-fill { display: block; width: var(--percent); height: 100%; border-radius: inherit; background: #c35a64; }
-.budget-fill[data-status="perto"] { background: var(--money-out); }
-.budget-fill[data-status="acima"] { background: repeating-linear-gradient(120deg, var(--money-out) 0 5px, #c35a64 5px 9px); }
+.budget-fill { display: block; width: var(--percent); height: 100%; border-radius: inherit; }
+.budget-fill[data-status] {
+  --yellow-weight: clamp(0%, calc((var(--percent) - 15%) * 3), 100%);
+  --red-weight: clamp(0%, calc((var(--percent) - 50%) * 2), 100%);
+  --green-to-yellow: color-mix(in srgb, #237a4f, #e4b32c var(--yellow-weight));
+  --spend-color: color-mix(in srgb, var(--green-to-yellow), #b62d38 var(--red-weight));
+  background-color: #237a4f;
+  background-color: var(--spend-color);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--spend-color), white 20%), var(--spend-color));
+}
 .row-arrow { width: 14px; height: 14px; color: #7b7b7b; }
 .transaction-value { flex: 0 1 auto; max-width: 44%; text-align: right; font-size: 13px; font-weight: 750; overflow-wrap: anywhere; }
 .empty { color: var(--muted); font-size: 13px; padding: 14px 2px; line-height: 1.5; }
@@ -182,6 +197,7 @@ h1 { font-size: clamp(29px, 6vw, 40px); font-weight: 780; line-height: 1.09; let
 }
 .budget-overview strong { display: block; margin: 5px 0; font-size: 30px; line-height: 1.1; font-weight: 780; letter-spacing: -.045em; overflow-wrap: anywhere; }
 .budget-overview p { color: var(--muted); line-height: 1.5; font-size: 13px; }
+.budget-overview .investment-result { color: var(--money-color, var(--ink)); font-weight: 730; }
 .budget-overview .budget-warning { color: var(--money-out); }
 .budget-charts { display: grid; gap: 12px; }
 .pie-layout { display: grid; grid-template-columns: minmax(95px, .8fr) minmax(0, 1fr); align-items: center; gap: 10px; }
